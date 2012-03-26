@@ -1,0 +1,28 @@
+# general files
+*.note
+*.lock
+*.DS_Store
+*.swp
+
+# python specific stuff
+*.py[co]
+
+# Packages
+*.egg
+*.egg-info
+dist
+build
+eggs
+parts
+var
+sdist
+develop-eggs
+.installed.cfg
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+.coverage
+.tox
+
