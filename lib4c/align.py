@@ -202,7 +202,10 @@ def make_pairs(read1_file_name, read2_file_name):
         if done == 0:    
             id1 = r1[0].split()[0]
             id2 = r2[0].split()[0]
-            if id1 != id2 and ("{0}/1".format(id1) != "{0}/2".format(id2)):
+            if id1[-2] == "/":
+                id1 = id1.split("/")[0]
+                id2 = id2.split("/")[0]
+            if id1 != id2:
                 logging.error("Ids of pair do not match: %s vs %s", id1, id2)
                 sys.exit(1)
             yield (id1, r1[1], r1[2], r2[1], r2[2])
