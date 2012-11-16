@@ -5,7 +5,8 @@
 *.swp
 
 # python specific stuff
-*.py[co]
+*.pyc
+*.pyo
 
 # Packages
 *.egg
