@@ -13,21 +13,21 @@ def mkfq(args):
     logging.info("Read 1: %s", args.read1)
     logging.info("Read 2: %s", args.read2)
     logging.info("Config: %s", args.config.name)
-    logging.info("Output goes to: %s", args.out.name)
+    logging.info("Output goes to: %s", args.out)
 
     flanks, flank_prefix_len = parse_config_file(args.config, min_prefix_len = 6)
     args.config.close()
-    os.mkdir(args.out.name)
+    os.mkdir(args.out)
 
     pairs       = make_pairs(args.read1, args.read2)
     valid_pairs = process_pairs(pairs, flanks, flank_prefix_len)
     out = {}
     for sample, rid, s1, q1, s2, q2 in valid_pairs:
         if sample not in out:
-            out[sample] = (open(os.path.join(args.out.name, "%s.r1.fq" % sample)),
-                           open(os.path.join(args.out.name, "%s.r2.fq" % sample)))
+            out[sample] = (open(os.path.join(args.out, "%s.r1.fq" % sample), "w"),
+                           open(os.path.join(args.out, "%s.r2.fq" % sample), "w"))
         out[sample][0].write("@{0}/1\n{1}\n+\n{2}\n".format(rid, s1, q1))
-        out[sample][1]("@{0}/2\n{1}\n+\n{2}\n".format(rid, s2, q2))
+        out[sample][1].write("@{0}/2\n{1}\n+\n{2}\n".format(rid, s2, q2))
     for o in out:
         out[o][0].close()
         out[o][1].close()
