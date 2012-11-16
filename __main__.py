@@ -10,6 +10,7 @@ from lib4c.make_index import make_index
 from lib4c.align      import align
 from lib4c.fragcount  import fragcount
 from lib4c.bin        import bin_frag
+from lib4c.mkfq       import mkfq
 
 #TODO:  improve error handling in all modules (cleanup actions!!!)
 
@@ -204,6 +205,32 @@ bin_cmd.add_argument("all_frag_bed", type = infile_name_check,
 bin_cmd.add_argument("fragcount_bed", nargs="+", type = infile_name_check, 
         help = "fragcount file(s) to process")
 bin_cmd.set_defaults(func = bin_frag)
+
+
+################################################################################
+# interface for the align action
+################################################################################
+mkfq_cmd = commands.add_parser("mkfq",
+        formatter_class = argparse.RawDescriptionHelpFormatter,
+        help            = "Extract read pairs for samples (for example for submission to database)",
+        description     = textwrap.dedent("""\
+            Take a pair of compressed fastq files, determine which pairs are
+            valid (i.e. have the 6-hitter and 4-hitter flank), and write the 
+            pairs for each sample to separate files. Uses the same
+            configuration file as the alignment command.
+            """))
+mkfq_cmd.add_argument("read1", type = infile_name_check, 
+        help = "First read of pair")
+mkfq_cmd.add_argument("read2", type = infile_name_check, 
+        help = "Second read of pair")
+mkfq_cmd.add_argument("config", type = infile_check("r"), 
+        help = "Configuration file describing flanks")
+mkfq_cmd.add_argument("-o", "--out", type = outdir_check,
+        default = "split_fastq",
+        help = "directory into which to save the split fastq files [%(default)s]")
+mkfq_cmd.set_defaults(func = mkfq)
+
+
 
 ################################################################################
 # run
