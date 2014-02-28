@@ -1,9 +1,65 @@
+"""
+Usage:
+    4c make-index [--flank=N] <genome> <site> <name>
+
+Options:
+    --flank=N  length of flag on left and right of
+               each site to include in the index [default: 100]
+
+Arguments:
+    genome     fasta file of genome to process
+    site       sequence of restriction site to use
+    name       name of the restriction enzyme
+
+Description:
+    Create a bowtie index of sequences flanking selected
+    restriction sites.
+    
+    Requires: bowtie and bowtie-build must be on PATH.
+    Notes:
+      1) bowtie2 is not yet supported.
+      2) fragments with gaps >1kb are excluded from index
+         but included in the .info file
+      3) all output goes into directory <name>.  <name> must not
+         exists.
+      4) lmap and rmap are not yet implemented   
+
+    For each restriction site found in the genome, sequences to the
+    left and right are included in the index.  They are joined
+    together with 4 Ns and named
+   
+    >enzyme_chrom_start0_end1
+    
+    In addition, a second file (<name>.info) contains details for each 
+    fragment in the format
+    
+    enzyme_chrom_start0_end1|included|chrom|start0|end1|lmap|rmap
+    
+    where start0 is the 0-based start index (not including the site
+    itself) and end1 is the 1-based end index such that end1 - start0
+    is the actual length of the fragment.  Fragments that contain
+    large gaps (>500nts) are not included in the index.  lmap and rmap
+    are indicators [n|y|u] for the mappability of the left and right
+    end, respectively.  They are strings of length [flank] such that
+    lmap[i-1] represent the mappability of the +strand fragment of
+    length i and rmap[i-1] represents the mappability of the right
+    -strand fragment (i.e. starting from the right restriction
+    site). n = not mappable; y=mappable; u = not tested
+            
+"""
+
 import logging
+import docopt
 import os
 import sys
 import numpy
 import subprocess
 from Bio import SeqIO
+
+
+def main(cmdline):
+    args = docopt.docopt(__doc__, argv=cmdline)
+    print(args)
 
 def make_index(args):
     logging.info("***** Creating new genome index *****")

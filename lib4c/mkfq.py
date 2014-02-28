@@ -1,3 +1,27 @@
+"""
+Usage:
+    4c mkfq [--out=OUTDIR] <read1> <read2> <config>
+
+Options:
+    --out=OUTDIR  directory into which to save the split
+                  fastq files [default: split_fastq]
+
+Arguments:
+    read1   fastq file of first read in pair
+    read2   fastq file of second read in pair
+    config  configuration file describing flanks
+
+Description:
+    Take a pair of compressed fastq files, determine which pairs are
+    valid (i.e. have the 6-hitter and 4-hitter flank), and write the 
+    pairs for each sample to separate files. Uses the same
+    configuration file as the alignment command.
+
+"""
+
+
+
+import docopt
 import sys
 import os
 import shlex
@@ -7,6 +31,10 @@ import collections
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 BUFSIZE = 81920
+
+def main(cmdline):
+    args = docopt.docopt(__doc__, argv=cmdline)
+    print(args)
 
 def mkfq(args):
     """driver function for the mkfq action"""

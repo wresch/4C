@@ -1,3 +1,30 @@
+"""
+Usage:
+    4c align [--out=NAME] [--qual=QUAL] <read1> <read2> <config> <genome>
+
+Options:
+    --out=NAME    output file name [default: -]
+    --qual=QUAL   fastq quality scale (solexa, phred64, phred33)
+                  [default: phred33]
+
+Arguments:
+    read1         fastq file of first read in pair
+    read2         fastq file of second read in pair
+    config        configuration file describing flanks for each bait
+    genome        bowtie index of restriction enzyme flanks
+
+Description:
+    Take a pair of compressed fastq files, determine which pairs are
+    valid (i.e. have the 6-hitter and 4-hitter flank), extract the
+    target sequence from the 6-hitter arm (not including the
+    restriction site itself), and align the 6-hitter arm against a
+    bowtie index containing only sequences flanking the 6-hitter
+    sites.  Output is in bam format.
+
+"""
+
+
+import docopt
 import sys
 import os
 import shlex
@@ -11,6 +38,10 @@ BUFSIZE = 81920
 #TODO:      cause all the resources to be shut down properly??
 #TODO:      maybe use threading?
 
+def main(cmdline):
+    args = docopt.docopt(__doc__, argv=cmdline)
+    print(args)
+    
 def align(args):
     """driver function for the align action"""
     logging.info("***** Starting alignment *****")

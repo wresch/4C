@@ -1,3 +1,37 @@
+"""
+Usage:
+    4c fragcount <outdir> <bam> ...
+
+Arguments:
+    outdir  output directory
+    bam     bam file(s) to process
+
+Description:
+    Take the bam output of the align action and generate a table of 
+    read counts for each fragment per sample.  Multiple bam files
+    can be run together if sample is spread over multiple alignment
+    files.
+
+    Output format:
+        chrom|start0|end1|#left|#right|norm total
+        | = tab
+
+    where #left and #right are the number of reads mapping to the left
+    and right sides of the fragment, respectively.  norm left/right are
+    the normalized numbers (by aligned library size).
+
+    The output directory will contain one file per sample plus one file
+    called "all_fragments.bed" that contains a listing of all the
+    restriction fragments parsed from the first bam header. This ***
+    only *** makes sense if all the bam files were created with the same
+    set of restriction fragments.
+
+"""
+
+
+
+
+import docopt
 import sys
 import os
 import logging
@@ -8,6 +42,10 @@ import pysam
 
 BUFSIZE = 81920
 
+def main(cmdline):
+    args = docopt.docopt(__doc__, argv=cmdline)
+    print(args)
+    
 def fragcount(args):
     logging.info("output file: %s", args.outdir)
     os.mkdir(args.outdir, 0700)

@@ -1,8 +1,34 @@
+"""
+Usage:
+    4c bin <outdir> <bins> <frags> <fragcount>
+
+Arguments:
+    outdir      output directory
+    bins        bins to use for binning in bed format
+    frags       all fragments that were considered in
+                bed format (created by fragcount)
+    fragcount   fragment count file (also created by
+                fragcount
+
+Description:
+    Create bedgraph file for each fragcount output file showing the fraction of
+    positive frgments per fixed-size bin.
+
+    Currently user has to provide bins. 
+
+
+"""
+
+import docopt
 import os
 import logging
 import pybedtools as pbt
 
 #TODO:  bad names for functions/variables - fix!
+
+def main(cmdline):
+    args = docopt.docopt(__doc__, argv=cmdline)
+    print(args)
 
 def bin_frag(args):
     logging.info("output directory: %s", args.outdir)
