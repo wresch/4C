@@ -80,12 +80,13 @@ def validate(args):
     logging.info("flank:      %d", args["--flank"])
 
     return args
-    
 
 def main(cmdline):
     args = validate(docopt.docopt(__doc__, argv=cmdline))
-    make_index(args)
-
+    make_index(args["<genome>"],
+               args["<site>"],
+               args["<name>"],
+               args["--flank"])
 
 def make_index(genome, site, re_name, flank):
     out_dir = re_name
@@ -102,8 +103,8 @@ def make_index(genome, site, re_name, flank):
     fnull = open(os.devnull, 'w')
     try:
         subprocess.check_call(["bowtie-build", 
-            "%s.fa" % os.path.join(out_dir, args.name), 
-            os.path.join(out_dir, args.name)],
+            "%s.fa" % os.path.join(out_dir, re_name), 
+            os.path.join(out_dir, re_name)],
             stdout = fnull, 
             stderr = fnull)
     except OSError:
@@ -130,8 +131,8 @@ def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info):
         
         left_site = seq_find(site, start = pos)
         if left_site == -1:
-            logging.warning("No site found in sequence %s", seq_id)
-            break
+            logging.error("No site found in sequence %s", seq_id)
+            sys.exit(1)
         while True:
             right_site = seq_find(site, start = left_site + site_len)
             if right_site == -1:
@@ -159,16 +160,17 @@ def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info):
                         seq_id, start0, end1, frag_len)
 
             left_site = right_site
-    log_frag_len_histogram(frag_lengths, 500)
+    log_frag_len_histogram(frag_lengths, max(frag_lengths) // 30 )
 
 
 def log_frag_len_histogram(length_list, binsize):
-    counts = numpy.bincount([x / binsize for x in length_list])
+    counts = numpy.bincount([x // binsize for x in length_list])
     bin_edges = ["[%5d - %5d[" % (i * binsize, (i + 1) * binsize) for i in range(len(counts))]
     bin_edges[-1] = ">%5d         " % (len(counts) * binsize)
     scale = 40.0 / max(counts) 
     logging.info("Size distribution of included fragments (mean = %d):",
             numpy.mean(length_list))
     for i in range(len(counts)):
-        logging.info("%s |%s", bin_edges[i], int(counts[i] * scale) * "*")
+        s = int(counts[i] * scale) * "*"
+        logging.info("%s |%-45s|--(%5d)", bin_edges[i], s, counts[i])
 
