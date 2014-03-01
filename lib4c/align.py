@@ -3,7 +3,7 @@ Usage:
     4c align [--out=NAME] [--qual=QUAL] <read1> <read2> <config> <genome>
 
 Options:
-    --out=NAME    output file name [default: -]
+    --out=NAME    output file name [default: stdout]
     --qual=QUAL   fastq quality scale (solexa, phred64, phred33)
                   [default: phred33]
 
@@ -13,6 +13,9 @@ Arguments:
     config        configuration file describing flanks for each bait
     genome        bowtie index of restriction enzyme flanks
 
+    Output goes to stdout by default so that sam format data can
+    be converted to bam on the fly.
+    
 Description:
     Take a pair of compressed fastq files, determine which pairs are
     valid (i.e. have the 6-hitter and 4-hitter flank), extract the

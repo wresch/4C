@@ -26,7 +26,6 @@ import docopt
 import os
 import sys
 import logging
-import textwrap
 
 #TODO:  improve error handling in all modules (cleanup actions!!!)
 
@@ -85,7 +84,7 @@ else:
     log_level = logging.DEBUG
 logging.basicConfig(
         level   = log_level,
-        format  = "%(levelname)-7s:%(funcName)s:$(lineno)d| %(message)s")
+        format  = "%(levelname)7s:%(funcName)s:%(lineno)d| %(message)s")
 
 argv = [args['<command>']] + args['<args>']
 if args["<command>"] == "make-index":

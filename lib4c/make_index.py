@@ -9,7 +9,9 @@ Options:
 Arguments:
     genome     fasta file of genome to process
     site       sequence of restriction site to use
-    name       name of the restriction enzyme
+    name       name of the restriction enzyme. Used as the
+               name of the output directory for the index
+               and as the prefix for the .info file.
 
 Description:
     Create a bowtie index of sequences flanking selected
@@ -50,33 +52,48 @@ Description:
 
 import logging
 import docopt
+from .validators import is_valid_infile
 import os
 import sys
 import numpy
 import subprocess
 from Bio import SeqIO
 
+def validate(args):
+    if not is_valid_infile(args["<genome>"]):
+        logging.error("file '{<genome>}' not found".format(**args))
+        sys.exit(1)
+    args["<site>"] = args["<site>"].upper()
+    if os.path.exists(args["<name>"]):
+        logging.error("'{<name>}' already exists".format(**args))
+        sys.exit(1)
+    try:
+        args["--flank"] = int(args["--flank"])
+    except ValueError:
+        logging.error("--flank requires an int value")
+        sys.exit(1)
+    
+    logging.info("***** Creating new genome index *****")
+    logging.info("Genome:     %s", args["<genome>"])
+    logging.info("RE site:    %s", args["<site>"])
+    logging.info("RE name:    %s", args["<name>"])
+    logging.info("flank:      %d", args["--flank"])
+
+    return args
+    
 
 def main(cmdline):
-    args = docopt.docopt(__doc__, argv=cmdline)
-    print(args)
+    args = validate(docopt.docopt(__doc__, argv=cmdline))
+    make_index(args)
 
-def make_index(args):
-    logging.info("***** Creating new genome index *****")
-    logging.info("Genome:     %s", args.genome.name)
-    logging.info("RE site:    %s", args.site.upper())
-    logging.info("RE name:    %s", args.name)
-    logging.info("flank:      %d", args.flank)
-    
-    out_dir = args.name
-    if os.path.exists(out_dir):
-        logging.error("Target directory %s already exists", out_dir)
-        sys.exit(1)
+
+def make_index(genome, site, re_name, flank):
+    out_dir = re_name
     os.mkdir(out_dir)
-    out_fasta_fh = open(os.path.join(out_dir, "%s.fa" % args.name), "w")
-    out_info_fh  = open(os.path.join(out_dir, "%s.info" % args.name), "w")
-
-    make_fasta_file(args.genome, args.site, args.name, args.flank, 
+    
+    out_fasta_fh = open(os.path.join(out_dir, "%s.fa" % re_name), "w")
+    out_info_fh  = open(os.path.join(out_dir, "%s.info" % re_name), "w")
+    make_fasta_file(genome, site, re_name, flank, 
             out_fasta_fh, out_info_fh)
     out_fasta_fh.close()
     out_info_fh.close()

@@ -11,6 +11,7 @@ Arguments:
     read2   fastq file of second read in pair
     config  configuration file describing flanks
 
+    
 Description:
     Take a pair of compressed fastq files, determine which pairs are
     valid (i.e. have the 6-hitter and 4-hitter flank), and write the 
@@ -22,6 +23,7 @@ Description:
 
 
 import docopt
+from schema import Schema, And, Use, Optional
 import sys
 import os
 import shlex
@@ -34,6 +36,9 @@ BUFSIZE = 81920
 
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
+    schema = Schema({"<read1>":  os.path.exists,
+                     "<read2>":  os.path.exists,
+                     "<config>": os.path.exists})
     print(args)
 
 def mkfq(args):
