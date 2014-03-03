@@ -1,18 +1,18 @@
 """
 Usage:
-    4c bin <outdir> <bins> <frags> <fragcount>
+    4c bin <outdir> <bins> <frags> <fragcount>...
 
 Arguments:
     outdir      output directory
     bins        bins to use for binning in bed format
     frags       all fragments that were considered in
                 bed format (created by fragcount)
-    fragcount   fragment count file (also created by
+    fragcount   fragment count file(s) (also created by
                 fragcount
 
 Description:
-    Create bedgraph file for each fragcount output file showing the fraction of
-    positive frgments per fixed-size bin.
+    Create bedgraph file for each fragcount output file showing the
+    fraction of positive frgments per fixed-size bin.
 
     Currently user has to provide bins. 
 
@@ -20,11 +20,21 @@ Description:
 """
 
 import docopt
+from . import validators as val
 import os
 import logging
 import pybedtools as pbt
 
 #TODO:  bad names for functions/variables - fix!
+
+def check_args(args):
+    schema = {"<outdir>": (lambda x: not os.path.exists(x),
+                           "directory {<outdir>} already exists".format(**args)),
+              "<bins>": (val.is_valid_infile,
+                        "bin file {<bins>} does not exist".format(**args)),
+              "<frags>": (val.is_valid_infile,
+                         "frag info file {<frags>} does not exists".format(**args)),
+              "<fragcount>": (
 
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
