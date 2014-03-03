@@ -116,8 +116,6 @@ def make_index(genome, site, re_name, flank):
             os.path.join(out_dir, re_name)],
             stdout = fnull, 
             stderr = fnull)
-    except OSError:
-        logging.exception("Could not find bowtie-build")
     except subprocess.CalledProcessError:
         logging.exception("bowtie-build did not finish correctly")
     logging.info("DONE")
