@@ -41,6 +41,15 @@ def is_valid_infile(fn):
 def is_valid_fa_file(fn):
     return is_valid_infile(fn) and os.path.splitext(fn)[1] == ".fa"
 
+def is_valid_bam_file(fn):
+    return is_valid_infile(fn) and os.path.splitext(fn)[1] == ".bam"
+
+def is_valid_bam_file_list(l):
+    for bf in l:
+        if not is_valid_bam_file(bf):
+            return False
+    return True
+
 def is_valid_bowtie_index(fn):
     fn1 = "{}.1.ebwt".format(fn)
     return is_valid_infile(fn1)

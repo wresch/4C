@@ -32,6 +32,7 @@ Description:
 
 
 import docopt
+from . import validators as val
 import sys
 import os
 import logging
@@ -42,17 +43,36 @@ import pysam
 
 BUFSIZE = 81920
 
+def check_args(args):
+    schema = {"<outdir>": (lambda x: not os.path.exists(x),
+                           "{<outdir>} already exists".format(**args)),
+              "<bam>": (val.is_valid_bam_file_list,
+                        "one or more of bam files were not found")}
+    ok, errors = val.validate(args, schema)
+    if not ok:
+        for e in errors:
+            logging.error(e)
+        return None
+    else:
+        return args
+    
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
-    print(args)
-    
-def fragcount(args):
-    logging.info("output file: %s", args.outdir)
-    os.mkdir(args.outdir, 0700)
-    count(args.bam, args.outdir)
+    args = check_args(args)
+    if args is not None:
+        fragcount(args["<outdir>"],
+                  args["<bam>"])
+    else:
+        sys.exit(1)
+        
+def fragcount(outdir, bam_lst):
+    logging.info("output file: %s", outdir)
+    os.mkdir(outdir, 0700)
+    count(bam_lst, outdir)
 
 def list2():
     return [0, 0]
+
 class RunSummary(object):
     def __init__(self):
         self.frag_count  = {}
