@@ -23,7 +23,7 @@ Description:
 
 
 import docopt
-from schema import Schema, And, Use, Optional
+from . import validators as val
 import sys
 import os
 import shlex
@@ -34,31 +34,51 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 BUFSIZE = 81920
 
+def check_args(args):
+    schema = Schema({"<read1>":  (val.is_valid_infile,
+                                  "{<read1>} not a valid file".format(**args)),
+                     "<read2>":  (val.is_valid_infile,
+                                  "{<read2>} not a valid file".format(**args)),
+                     "<config>": (val.is_valid_infile,
+                                  "{<config>} not a valid file".format(**args)),
+                     "--out":    (lambda x: not os.path.exists(x),
+                                  "{--out} already exists".format(**args))})
+    ok, errors = val.validate(args, schema)
+    if not ok:
+        for e in errors:
+            logging.error(e)
+        return None
+    else:
+        return args
+
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
-    schema = Schema({"<read1>":  os.path.exists,
-                     "<read2>":  os.path.exists,
-                     "<config>": os.path.exists})
-    print(args)
+    args = check_args(args)
+    if args is none:
+        sys.exit(1)
+    mkfq(args["<read1>"],
+         args["<read2>"],
+         args["<config>"],
+         args["--out"])
 
-def mkfq(args):
+def mkfq(read1, read2, config, out):
     """driver function for the mkfq action"""
-    logging.info("Read 1: %s", args.read1)
-    logging.info("Read 2: %s", args.read2)
-    logging.info("Config: %s", args.config.name)
-    logging.info("Output goes to: %s", args.out)
+    logging.info("Read 1: %s", read1)
+    logging.info("Read 2: %s", read2)
+    logging.info("Config: %s", config.name)
+    logging.info("Output goes to: %s", out)
 
-    flanks, flank_prefix_len = parse_config_file(args.config, min_prefix_len = 6)
-    args.config.close()
-    os.mkdir(args.out)
+    with open(config) as config_fh:
+        flanks, flank_prefix_len = parse_config_file(config_fh, min_prefix_len = 6)
+    os.mkdir(out)
 
-    pairs       = make_pairs(args.read1, args.read2)
+    pairs       = make_pairs(read1, read2)
     valid_pairs = process_pairs(pairs, flanks, flank_prefix_len)
     out = {}
     for sample, rid, s1, q1, s2, q2 in valid_pairs:
         if sample not in out:
-            out[sample] = (open(os.path.join(args.out, "%s.r1.fq" % sample), "w"),
-                           open(os.path.join(args.out, "%s.r2.fq" % sample), "w"))
+            out[sample] = (open(os.path.join(out, "%s.r1.fq" % sample), "w"),
+                           open(os.path.join(out, "%s.r2.fq" % sample), "w"))
         out[sample][0].write("@{0}/1\n{1}\n+\n{2}\n".format(rid, s1, q1))
         out[sample][1].write("@{0}/2\n{1}\n+\n{2}\n".format(rid, s2, q2))
     for o in out:

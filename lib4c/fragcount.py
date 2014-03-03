@@ -26,6 +26,8 @@ Description:
     only *** makes sense if all the bam files were created with the same
     set of restriction fragments.
 
+    Note that that multiple processes are started in parallel and that
+    therefore this should be run on a processing node.
 """
 
 

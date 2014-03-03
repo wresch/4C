@@ -38,6 +38,12 @@ def is_valid_qscale(s):
 def is_valid_infile(fn):
     return os.path.exists(fn) and os.path.isfile(fn)
 
+def is_valid_infile_list(lst):
+    for fn in lst:
+        if not is_valid_infile(fn):
+            return False
+    return True
+
 def is_valid_fa_file(fn):
     return is_valid_infile(fn) and os.path.splitext(fn)[1] == ".fa"
 
@@ -65,7 +71,9 @@ def is_valid_outfile(fn, allow_existing=False):
             return False
     else:
         pd = os.path.dirname(fn)
-        if os.path.exists(pd) and os.path.isdir(pd):
+        if pd == "":
+            return True
+        elif os.path.exists(pd) and os.path.isdir(pd):
             return True
         else:
             return False

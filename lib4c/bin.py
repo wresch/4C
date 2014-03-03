@@ -34,29 +34,41 @@ def check_args(args):
                         "bin file {<bins>} does not exist".format(**args)),
               "<frags>": (val.is_valid_infile,
                          "frag info file {<frags>} does not exists".format(**args)),
-              "<fragcount>": (
+              "<fragcount>": (val.is_valid_infile_list,
+                              "one or more fragcount files were not valid")}
+    ok, errors = val.validate(args, schema)
+    if not ok:
+        for e in errors:
+            logging.error(e)
+        return None
+    else:
+        return args
 
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
+    args = check_args(args)
+    if args is None:
+        sys.exit(1)
     print(args)
+    sys.exit(0)
+    bin_frag(args["<outdir>"],
+             args["<bins>"],
+             args["<frags>"],
+             args["<fragcount>"])
 
-def bin_frag(args):
-    logging.info("output directory: %s", args.outdir)
-    logging.info("Bin file: %s", args.bin_bed)
-    logging.info("All restriction fragments bed file: %s", args.all_frag_bed)
-    logging.info("Number of fragdata files: %d", len(args.fragcount_bed))
-    data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(data_dir, "data")
-    logging.info("data dir: %s", data_dir)
-
-    os.mkdir(args.outdir)
+def bin_frag(outdir, bin_bed, all_frag_bed, fragcount_bed):
+    logging.info("output directory: %s", outdir)
+    logging.info("Bin file: %s", bin_bed)
+    logging.info("All restriction fragments bed file: %s", all_frag_bed)
+    logging.info("Number of fragdata files: %d", len(fragcount_bed))
+    os.mkdir(outdir)
 
     # open bins file
-    bins = pbt.BedTool(args.bin_bed)
+    bins = pbt.BedTool(bin_bed)
     logging.info("read in %8d bins", len(bins))
 
     # open all frag file
-    all_frag = pbt.BedTool(args.all_frag_bed)
+    all_frag = pbt.BedTool(all_frag_bed)
     logging.info("read in %8d restriction fragments", len(all_frag))
 
     # match up bins with restriction fragments
@@ -64,7 +76,7 @@ def bin_frag(args):
     bins_with_any_frag = count_frags_per_bin(bins, all_frag)
     logging.info("bins that contained any fragments: %d", len(bins_with_any_frag))
 
-    make_bedgraph_files(args.fragcount_bed, bins_with_any_frag, args.outdir)
+    make_bedgraph_files(fragcount_bed, bins_with_any_frag, outdir)
 
     # cleanup
     pbt.cleanup(remove_all = True)

@@ -108,6 +108,12 @@ def align(read1, read2, config, index, qual, out):
     logging.info("Config: %s", config)
     logging.info("Output: %s", out)
     logging.info("Qual  : --%s-quals", qual)
+    try:
+        bowtie_version=subprocess.check_output(["bowtie", "--version"])
+        logging.info("bowtie:   %s", bowtie_version)
+    except OSError:
+        logging.error("bowtie executable not found on path")
+        sys.exit(1)
 
 
     with open(config) as config_fh:
