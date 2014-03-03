@@ -1,9 +1,62 @@
+"""
+Usage:
+    4c align [--out=NAME] [--qual=QUAL] <read1> <read2> <config> <index>
+
+Options:
+    --out=NAME    output file name [default: stdout]
+    --qual=QUAL   fastq quality scale (solexa, phred64, phred33)
+                  [default: phred33]
+
+Arguments:
+    read1         fastq file of first read in pair
+    read2         fastq file of second read in pair
+    config        configuration file describing flanks for each bait
+    index         bowtie index of restriction enzyme flanks
+
+    Output goes to stdout by default so that any filtering with
+    samtools can be done in a pipeline format.
+    
+Description:
+    Take a pair of compressed fastq files, determine which pairs are
+    valid (i.e. have the 6-hitter and 4-hitter flank), extract the
+    target sequence from the 6-hitter arm (not including the
+    restriction site itself), and align the 6-hitter arm against a
+    bowtie index containing only sequences flanking the 6-hitter
+    sites.  Output is in bam format.
+
+    This alignment takes 16 cores, so it needs to be run on a 
+    processing node.
+    
+Config file format:
+    # comment line
+    sample name:enzyme1 flank:enzyme2 flank
+
+    enzyme 1: enzyme used for first digest (traditionally a 6 hitter,
+        but for higher resolution experiments a 4-hitter).  The fragment
+        size of this digest determines the resolution. 
+    enzyme 2: enzyme used for second digest
+    
+    Flank format:
+        * flank is separated into 2 parts separated by comma:
+            primed_flank,non_primed_flank
+          where the non_primed_flank is sequence between the
+          primer and the restriction site
+        * sequence is upper case except for the RE site, which
+          is lower case
+        * full sequence of the RE site is included in the flank
+          sequence.
+"""
+
+
+import docopt
+from . import validators as val
 import sys
 import os
 import shlex
 import logging
 import subprocess
 import collections
+import re
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 BUFSIZE = 81920
@@ -11,28 +64,70 @@ BUFSIZE = 81920
 #TODO:      cause all the resources to be shut down properly??
 #TODO:      maybe use threading?
 
-def align(args):
+def check_args(args):
+    schema = {"<read1>": (val.is_valid_infile,
+                          "file {<read1>} not found".format(**args)),
+              "<read2>": (val.is_valid_infile,
+                          "file {<read2>} not found".format(**args)),
+              "<config>": (val.is_valid_infile,
+                           "config file {<config>} not found".format(**args)),
+              "<index>": (val.is_valid_bowtie_index,
+                           "{<index>} is not a valid bowtie index".format(**args)),
+              "--out": (val.is_valid_outfile,
+                        "{--out} is not a valid output file".format(**args)),
+              "--qual": (val.is_valid_qscale,
+                         "{--qual} is not a valid quality scale".format(**args))}
+    ok, errors = val.validate(args, schema)
+    if not ok:
+        for e in errors:
+            logging.error(e)
+        return None
+    else:
+        args["--qual"] = args["--qual"].lower()
+        return args
+
+def main(cmdline):
+    args = docopt.docopt(__doc__, argv=cmdline)
+    args = check_args(args)
+    if args is None:
+        sys.exit(1)
+    else:
+        align(args["<read1>"],
+              args["<read2>"],
+              args["<config>"],
+              args["<index>"],
+              args["--qual"],
+              args["--out"])
+    
+def align(read1, read2, config, index, qual, out):
     """driver function for the align action"""
     logging.info("***** Starting alignment *****")
-    logging.info("Read 1: %s", args.read1)
-    logging.info("Read 2: %s", args.read2)
-    logging.info("Genome: %s", args.genome)
-    logging.info("Config: %s", args.config.name)
-    logging.info("Output: %s", args.out.name)
-    logging.info("Qual  : --%s-quals", args.qual)
-    if not os.path.exists(args.genome + ".1.ebwt"):
-        logging.error("Could not find genome with prefix %s", args.genome)
+    logging.info("Read 1: %s", read1)
+    logging.info("Read 2: %s", read2)
+    logging.info("Genome: %s", index)
+    logging.info("Config: %s", config)
+    logging.info("Output: %s", out)
+    logging.info("Qual  : --%s-quals", qual)
+    try:
+        bowtie_version=subprocess.check_output(["bowtie", "--version"])
+        logging.info("bowtie:   %s", bowtie_version)
+    except OSError:
+        logging.error("bowtie executable not found on path")
         sys.exit(1)
 
-    flanks, flank_prefix_len = parse_config_file(args.config, min_prefix_len = 6)
-    args.config.close()
 
-    pairs       = make_pairs(args.read1, args.read2)
+    with open(config) as config_fh:
+        flanks, flank_prefix_len = parse_config_file(config_fh, min_prefix_len = 6)
+
+    pairs       = make_pairs(read1, read2)
     valid_pairs = process_pairs(pairs, flanks, flank_prefix_len)
-    #TODO: take threads as a command line argument and simply pass args to
-    #TODO:     instead of unrolling it like i currently do
-    run_bowtie(valid_pairs, args.genome, args.qual, args.out)
 
+    if out == "stdout":
+        out_fh = sys.stdout
+    else:
+        out_fh = open(out, "wb")
+    run_bowtie(valid_pairs, index, qual, out_fh)
+    out_fh.close()
 
 def run_bowtie(valid_pairs, genome, qual_scale, out_fh):
     """start a bowtie process and feed it's stdin with sequences for
@@ -99,29 +194,35 @@ def _parse_config_file(fh):
     for line in fh:
         if line.startswith("#"):
             continue
-        sample, six_flank, four_flank = line.strip().split(":")
+        sample, enz1_flank, enz2_flank = line.strip().split(":")
 
-        six_flank_full     = "".join(six_flank.split(","))
-        six_flank_trim_to  = len(six_flank_full)
-        six_flank_full     = six_flank_full.upper()
-        if six_flank_full in unique_flanks:
-            logging.error("Same 6 cutter flank occured twice in flank config \
-                    file: %s/%s", sample, six_flank_full)
+        enz1_flank_full     = "".join(enz1_flank.split(","))
+        enz1_flank_trim_to  = len(enz1_flank_full)
+        enz1_flank_re_site  = re.search(r"[gatc]+$", enz1_flank_full)
+        if enz1_flank_re_site is not None:
+            logging.info("  sample {}: enzyme 1 RE site is {}".format(
+                    sample, enz1_flank_re_site.group().upper()))
+        else:
+            logging.warn("  could not find RE site for enzyme 1 in config file")
+        enz1_flank_full     = enz1_flank_full.upper()
+        if enz1_flank_full in unique_flanks:
+            logging.error("Same enzyme 1 cutter flank occured twice in flank config \
+                    file: %s/%s", sample, enz1_flank_full)
             sys.exit(1)
         else:
-            unique_flanks.add(six_flank_full)
+            unique_flanks.add(enz1_flank_full)
 
-        four_flank_full = "".join(four_flank.split(",")).upper()
-        id_tuples.append((six_flank_full,
-            four_flank_full,
-            six_flank_trim_to,
+        enz2_flank_full = "".join(enz2_flank.split(",")).upper()
+        id_tuples.append((enz1_flank_full,
+            enz2_flank_full,
+            enz1_flank_trim_to,
             sample))
     return id_tuples
 
-def find_unique_prefix_len(str_lst, min_prefix_len):
-    """find shortest prefix larger than min_prefix_len that
-    uniquely identifies all strings in str_lst; only works for
-    small-ish data sets"""
+def find_unique_prefix_len(str_lst, min_prefix_len, excl_str_lst):
+    """find shortest prefix larger than min_prefix_len that uniquely
+    identifies all strings in str_lst; and does not appear in
+    excl_str_lst. only works for small-ish data sets"""
     max_word_len = max(len(x) for x in str_lst)
     min_word_len = min(len(x) for x in str_lst)
     if min_word_len < min_prefix_len:
@@ -135,34 +236,40 @@ def find_unique_prefix_len(str_lst, min_prefix_len):
                 sys.exit(1)
             bucket.add(word[0:prefix_len])
         if len(bucket) == len(str_lst):
-            return prefix_len
+            bucket_excl = set([x[0:prefix_len] for x in excl_str_lst])
+            if bucket & bucket_excl == set([]):
+                return prefix_len
+            else:
+                continue
     return None
 
 def parse_config_file(fh, min_prefix_len):
     """creates efficient structure for identifying different flanks"""
     flank_tuple = _parse_config_file(fh)
-    # length of shortest (but at least 6 nt long) unique prefix - 6 cutter
+    # length of shortest (but at least min_prefix_len nt long) unique prefix - first enzyme
     # note that the 4-cutter side can be redundant!
-    all_6_flanks = [x[0] for x in flank_tuple]
-    unique_prefix_len = find_unique_prefix_len(all_6_flanks, min_prefix_len)
+    all_enz1_flanks = [x[0] for x in flank_tuple]
+    all_enz2_flanks = [x[1] for x in flank_tuple]
+    unique_prefix_len = find_unique_prefix_len(all_enz1_flanks, min_prefix_len,
+                                               all_enz2_flanks)
     if unique_prefix_len is None:
-        logging.error("could not find unique prefix for 6 cutter flanks")
+        logging.error("could not find unique prefix for enzyme1 flanks")
         sys.exit(1)
     else:
-        logging.info("6 cutter unique prefix length: %d", unique_prefix_len)
+        logging.info("enzyme1 unique prefix length: %d", unique_prefix_len)
 
     # create data structure used for identyfying flanks
-    flank6d = {}
-    for flank6, flank4, trim6, sample in flank_tuple:
-        flank6d[flank6[0:unique_prefix_len]] = (
-                flank6, flank4, trim6, sample )
-        if len(flank4) > 50:
+    flank_id = {}
+    for flank_enz1, flank_enz2, trim_enz1, sample in flank_tuple:
+        flank_id[flank_enz1[0:unique_prefix_len]] = (
+                flank_enz1, flank_enz2, trim_enz1, sample )
+        if len(flank_enz2) > 50:
             logging.debug("%s => (%s, \n     %s..., \n     %d, %s)",
-                    flank6[0:unique_prefix_len], flank6, flank4[0:50], trim6, sample)
+                    flank_enz1[0:unique_prefix_len], flank_enz1, flank_enz2[0:50], trim_enz1, sample)
         else:
             logging.debug("%s => (%s, \n     %s, \n     %d, %s)",
-                    flank6[0:unique_prefix_len], flank6, flank4, trim6, sample)
-    return flank6d, unique_prefix_len
+                    flank_enz1[0:unique_prefix_len], flank_enz1, flank_enz2, trim_enz1, sample)
+    return flank_id, unique_prefix_len
 
 
 
@@ -230,8 +337,8 @@ def has_flank(s, flank, start):
 
 def process_pairs(pair_it, flanks, prefix_len):
     """take a pair iterator, determine which pairs are valid, remove the flanks,
-    and yield only the sequence/quality of the 6hitter target sequence"""
-    FLANK6, FLANK4, TRIM6, SAMPLE = range(4)
+    and yield only the sequence/quality of the enzyme1 target sequence"""
+    FLANK_ENZ1, FLANK_ENZ2, TRIM_ENZ1, SAMPLE = range(4)
     total_n, valid_n = 0, 0
     sample_counts = collections.defaultdict(int)
     for _, seq1, qual1, seq2, qual2 in pair_it:
@@ -240,22 +347,22 @@ def process_pairs(pair_it, flanks, prefix_len):
         s = flanks.get(seq1[0:prefix_len], None)
         if s is not None:
             # check the two flanks
-            if has_flank(seq1, s[FLANK6], prefix_len) and \
-               has_flank(seq2, s[FLANK4], prefix_len):
+            if has_flank(seq1, s[FLANK_ENZ1], prefix_len) and \
+               has_flank(seq2, s[FLANK_ENZ2], prefix_len):
                 valid_n += 1
                 new_rid = "%s:%d" % (s[SAMPLE], total_n)
                 sample_counts[s[SAMPLE]] += 1
-                yield (new_rid, seq1[s[TRIM6]:], qual1[s[TRIM6]:])
+                yield (new_rid, seq1[s[TRIM_ENZ1]:], qual1[s[TRIM_ENZ1]:])
             continue
         s = flanks.get(seq2[0:prefix_len], None)
         if s is not None:
             # check the two flanks
-            if has_flank(seq2, s[FLANK6], prefix_len) and \
-               has_flank(seq1, s[FLANK4], prefix_len):
+            if has_flank(seq2, s[FLANK_ENZ1], prefix_len) and \
+               has_flank(seq1, s[FLANK_ENZ2], prefix_len):
                 valid_n += 1
                 new_rid = "%s:%d" % (s[SAMPLE], total_n)
                 sample_counts[s[SAMPLE]] += 1
-                yield (new_rid, seq2[s[TRIM6]:], qual2[s[TRIM6]:])
+                yield (new_rid, seq2[s[TRIM_ENZ1]:], qual2[s[TRIM_ENZ1]:])
     logging.info("Total pairs screened: %8d", total_n)
     logging.info("Valid pairs found:    %8d", valid_n)
     for k, v in sample_counts.items():
