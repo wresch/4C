@@ -52,37 +52,46 @@ Description:
 
 import logging
 import docopt
-from .validators import is_valid_infile
+from . import validators as val
 import os
 import sys
 import numpy
 import subprocess
 from Bio import SeqIO
 
-def validate(args):
-    if not is_valid_infile(args["<genome>"]):
-        logging.error("file '{<genome>}' not found".format(**args))
-        sys.exit(1)
+def check_args(args):
+    schema = {"<genome>": (val.is_valid_fa_file,
+                           "file {} not found or not a fasta file".format(args["<genome>"])),
+              "<name>": (lambda x: not os.path.exists(x),
+                         "'{}' already exists".format(args["<name>"])),
+              "<site>": (val.is_seq, "'{}' is not a valid re site".format(args["<site>"])),
+              "--flank": (val.is_number, "flank needs to be a number")}
+    ok, errors = val.validate(args, schema)
+    if not ok:
+        for e in errors:
+            logging.error(e)
+        return None
     args["<site>"] = args["<site>"].upper()
-    if os.path.exists(args["<name>"]):
-        logging.error("'{<name>}' already exists".format(**args))
+    args["--flank"] = int(args["--flank"])
+
+    return args
+
+def main(cmdline):
+    args = check_args(docopt.docopt(__doc__, argv=cmdline))
+    if args is None:
         sys.exit(1)
-    try:
-        args["--flank"] = int(args["--flank"])
-    except ValueError:
-        logging.error("--flank requires an int value")
-        sys.exit(1)
-    
     logging.info("***** Creating new genome index *****")
     logging.info("Genome:     %s", args["<genome>"])
     logging.info("RE site:    %s", args["<site>"])
     logging.info("RE name:    %s", args["<name>"])
     logging.info("flank:      %d", args["--flank"])
-
-    return args
-
-def main(cmdline):
-    args = validate(docopt.docopt(__doc__, argv=cmdline))
+    try:
+        bowtie_version=subprocess.check_output(["bowtie", "--version"])
+        logging.info("bowtie:   %s", bowtie_version)
+    except OSError:
+        logging.error("bowtie executable not found on path")
+        sys.exit(1)
+        
     make_index(args["<genome>"],
                args["<site>"],
                args["<name>"],
@@ -112,8 +121,6 @@ def make_index(genome, site, re_name, flank):
     except subprocess.CalledProcessError:
         logging.exception("bowtie-build did not finish correctly")
     logging.info("DONE")
-
-
 
 def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info):
     fa_fmt   = ">{0}_{1}_{2}_{3}\n{4}NNNN{5}\n"

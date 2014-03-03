@@ -1,6 +1,6 @@
 """
 Usage:
-    4c align [--out=NAME] [--qual=QUAL] <read1> <read2> <config> <genome>
+    4c align [--out=NAME] [--qual=QUAL] <read1> <read2> <config> <index>
 
 Options:
     --out=NAME    output file name [default: stdout]
@@ -11,10 +11,10 @@ Arguments:
     read1         fastq file of first read in pair
     read2         fastq file of second read in pair
     config        configuration file describing flanks for each bait
-    genome        bowtie index of restriction enzyme flanks
+    index         bowtie index of restriction enzyme flanks
 
-    Output goes to stdout by default so that sam format data can
-    be converted to bam on the fly.
+    Output goes to stdout by default so that any filtering with
+    samtools can be done in a pipeline format.
     
 Description:
     Take a pair of compressed fastq files, determine which pairs are
@@ -28,6 +28,7 @@ Description:
 
 
 import docopt
+from . import validators as val
 import sys
 import os
 import shlex
@@ -41,32 +42,64 @@ BUFSIZE = 81920
 #TODO:      cause all the resources to be shut down properly??
 #TODO:      maybe use threading?
 
+def check_args(args):
+    schema = {"<read1>": (val.is_valid_infile,
+                          "file {<read1>} not found".format(**args)),
+              "<read2>": (val.is_valid_infile,
+                          "file {<read2>} not found".format(**args)),
+              "<config>": (val.is_valid_infile,
+                           "config file {<config>} not found".format(**args)),
+              "<index>": (val.is_valid_bowtie_index,
+                           "{<index>} is not a valid bowtie index".format(**args)),
+              "--out": (val.is_valid_outfile,
+                        "{--out} is not a valid output file".format(**args)),
+              "--qual": (val.is_valid_qscale,
+                         "{--qual} is not a valid quality scale".format(**args))}
+    ok, errors = val.validate(args, schema)
+    if not ok:
+        for e in errors:
+            logging.error(e)
+        return None
+    else:
+        args["--qual"] = args["--qual"].lower()
+        return args
+
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
-    print(args)
+    args = check_args(args)
+    if args is None:
+        sys.exit(1)
+    else:
+        align(args["<read1>"],
+              args["<read2>"],
+              args["<config>"],
+              args["<index>"],
+              args["--qual"],
+              args["--out"])
     
-def align(args):
+def align(read1, read2, config, index, qual, out):
     """driver function for the align action"""
     logging.info("***** Starting alignment *****")
-    logging.info("Read 1: %s", args.read1)
-    logging.info("Read 2: %s", args.read2)
-    logging.info("Genome: %s", args.genome)
-    logging.info("Config: %s", args.config.name)
-    logging.info("Output: %s", args.out.name)
-    logging.info("Qual  : --%s-quals", args.qual)
-    if not os.path.exists(args.genome + ".1.ebwt"):
-        logging.error("Could not find genome with prefix %s", args.genome)
-        sys.exit(1)
+    logging.info("Read 1: %s", read1)
+    logging.info("Read 2: %s", read2)
+    logging.info("Genome: %s", index)
+    logging.info("Config: %s", config)
+    logging.info("Output: %s", out)
+    logging.info("Qual  : --%s-quals", qual)
 
-    flanks, flank_prefix_len = parse_config_file(args.config, min_prefix_len = 6)
-    args.config.close()
 
-    pairs       = make_pairs(args.read1, args.read2)
+    with open(config) as config_fh:
+        flanks, flank_prefix_len = parse_config_file(config_fh, min_prefix_len = 6)
+
+    pairs       = make_pairs(read1, read2)
     valid_pairs = process_pairs(pairs, flanks, flank_prefix_len)
-    #TODO: take threads as a command line argument and simply pass args to
-    #TODO:     instead of unrolling it like i currently do
-    run_bowtie(valid_pairs, args.genome, args.qual, args.out)
 
+    if out == "stdout":
+        out_fh = sys.stdout
+    else:
+        out_fh = open(out, "wb")
+    run_bowtie(valid_pairs, index, qual, out_fh)
+    out_fh.close()
 
 def run_bowtie(valid_pairs, genome, qual_scale, out_fh):
     """start a bowtie process and feed it's stdin with sequences for
