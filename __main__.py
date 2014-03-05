@@ -6,7 +6,7 @@ Usage:
 Options:
     -q --quiet    Silence debug output
 
-Commands:
+Commands (in order of use):
     make-index
     align
     fragcount
@@ -14,10 +14,21 @@ Commands:
     mkfq
     
 Description:
-    ...
+    A set of tools for generating raw per-fragment 4C counts
+    from paired end reads where only the read spanning the primary
+    restriction site is aligned to all possible restriction
+    fragment ends from the genome. As of yet, no accounting for
+    mappability is done (maybe in a later version).
     
 Dependencies:
-    ...
+    Python
+        - docopt
+        - pybedtools
+        - numpy
+        - biopython
+    Executables on path:
+        - samtools
+        - bowtie 1
     
 """
 
