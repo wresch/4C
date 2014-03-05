@@ -1,17 +1,23 @@
 """
 Usage:
-    4c make-index [--flank=N] <genome> <site> <name>
+    4c make-index [--flank=N] [--site2=SEQ] <genome> <site> <name>
 
 Options:
-    --flank=N  length of flag on left and right of
-               each site to include in the index [default: 100]
-
+    --flank=N    length of flag on left and right of
+                 each site to include in the index [default: 100]
+    --site2=SEQ  if given, records for each fragment the distance
+                 between the primary sites on the left and the right
+                 and the secondary site targeted in the second
+                 digestion. If no secondary site is present, the
+                 numbers given are -1,-1 (these fragments are
+                 termed "blind"). [default: ]
+    
 Arguments:
-    genome     fasta file of genome to process
-    site       sequence of restriction site to use
-    name       name of the restriction enzyme. Used as the
-               name of the output directory for the index
-               and as the prefix for the .info file.
+    genome       fasta file of genome to process
+    site         sequence of restriction site to use
+    name         name of the restriction enzyme. Used as the
+                 name of the output directory for the index
+                 and as the prefix for the .info file.
 
 Description:
     Create a bowtie index of sequences flanking selected
@@ -35,18 +41,19 @@ Description:
     In addition, a second file (<name>.info) contains details for each 
     fragment in the format
     
-    enzyme_chrom_start0_end1|included|chrom|start0|end1|lmap|rmap
+    enzyme_chrom_start0_end1|included|chrom|start0|end1|lmap|rmap|site2_dist
     
     where start0 is the 0-based start index (not including the site
     itself) and end1 is the 1-based end index such that end1 - start0
     is the actual length of the fragment.  Fragments that contain
-    large gaps (>500nts) are not included in the index.  lmap and rmap
-    are indicators [n|y|u] for the mappability of the left and right
-    end, respectively.  They are strings of length [flank] such that
-    lmap[i-1] represent the mappability of the +strand fragment of
-    length i and rmap[i-1] represents the mappability of the right
-    -strand fragment (i.e. starting from the right restriction
-    site). n = not mappable; y=mappable; u = not tested
+    large gaps (>20% of fragment length) are not included in the
+    index.  lmap and rmap are indicators [n|y|u] for the mappability
+    of the left and right end, respectively.  They are strings of
+    length [flank] such that lmap[i-1] represent the mappability of
+    the +strand fragment of length i and rmap[i-1] represents the
+    mappability of the right -strand fragment (i.e. starting from the
+    right restriction site). n = not mappable; y=mappable; u = not
+    tested [this is not implemented yet].
             
 """
 
@@ -65,15 +72,17 @@ def check_args(args):
               "<name>": (lambda x: not os.path.exists(x),
                          "'{}' already exists".format(args["<name>"])),
               "<site>": (val.is_seq, "'{}' is not a valid re site".format(args["<site>"])),
-              "--flank": (val.is_number, "flank needs to be a number")}
+              "--flank": (val.is_number, "flank needs to be a number"),
+              "--site2": (lambda x: x=="" or val.is_seq(x),
+                          "'{}' is not a valid re site".format(args["--site2"]))}
     ok, errors = val.validate(args, schema)
     if not ok:
         for e in errors:
             logging.error(e)
         return None
     args["<site>"] = args["<site>"].upper()
+    args["--site2"] = args["--site2"].upper()
     args["--flank"] = int(args["--flank"])
-
     return args
 
 def main(cmdline):
@@ -83,28 +92,30 @@ def main(cmdline):
     logging.info("***** Creating new genome index *****")
     logging.info("Genome:     %s", args["<genome>"])
     logging.info("RE site:    %s", args["<site>"])
+    logging.info("secondary RE site: %s", args["--site2"])     
     logging.info("RE name:    %s", args["<name>"])
     logging.info("flank:      %d", args["--flank"])
     try:
-        bowtie_version=subprocess.check_output(["bowtie", "--version"])
+        bowtie_version=subprocess.check_output(["bowtie", "--version"]).split("\n")[0]
         logging.info("bowtie:   %s", bowtie_version)
     except OSError:
         logging.error("bowtie executable not found on path")
         sys.exit(1)
-        
+
     make_index(args["<genome>"],
                args["<site>"],
                args["<name>"],
-               args["--flank"])
+               args["--flank"],
+               args["--site2"])
 
-def make_index(genome, site, re_name, flank):
+def make_index(genome, site, re_name, flank, site2):
     out_dir = re_name
     os.mkdir(out_dir)
     
     out_fasta_fh = open(os.path.join(out_dir, "%s.fa" % re_name), "w")
     out_info_fh  = open(os.path.join(out_dir, "%s.info" % re_name), "w")
     make_fasta_file(genome, site, re_name, flank, 
-            out_fasta_fh, out_info_fh)
+            out_fasta_fh, out_info_fh, site2)
     out_fasta_fh.close()
     out_info_fh.close()
     
@@ -120,13 +131,16 @@ def make_index(genome, site, re_name, flank):
         logging.exception("bowtie-build did not finish correctly")
     logging.info("DONE")
 
-def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info):
-    fa_fmt   = ">{0}_{1}_{2}_{3}\n{4}NNNN{5}\n"
-    info_fmt = "{0}_{1}_{2}_{3}|{4}|{1}|{2}|{3}|todo|todo\n"
-    site     = site.upper()
-    site_len = len(site)
+def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info, site2):
+    fa_fmt    = ">{0}_{1}_{2}_{3}\n{4}NNNN{5}\n"
+    info_fmt  = "{0}_{1}_{2}_{3}|{4}|{1}|{2}|{3}|todo|todo|{5}\n"
+    site      = site.upper()
+    site_len  = len(site)
+    site2     = site2.upper()
+    site2_len = len(site2)
     min_frag_len = flank_len + 2
     frag_lengths = []
+    max_n_freq = 0.2
     for rec in SeqIO.parse(fasta, "fasta"):
         pos      = 0
         seq      = rec.seq.upper()
@@ -142,20 +156,30 @@ def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info):
             right_site = seq_find(site, start = left_site + site_len)
             if right_site == -1:
                 break
-            start0   = left_site + site_len
-            end1     = right_site
+            start0   = left_site + site_len #not including the RE site
+            end1     = right_site #not including the RE site
             frag_len = end1 - start0
             frag_lengths.append(min(frag_len, 10000))
-            uncalled_n = seq.count("N", start = start0, end = end1)
-            if uncalled_n < 1000 and frag_len > min_frag_len:
+            uncalled_n = float(seq.count("N", start = start0, end = end1)) / frag_len
+            if site2 == "":
+                site2_dist = "ND"
+            else:
+                left_site2 = seq_find(site2, start=start0, end=end1)
+                if left_site2 == -1:
+                    site2_dist = "-1,-1"
+                else:
+                    right_site2 = seq.rfind(site2, start=start0, end=end1)
+                    site2_dist = "%d,%d" % (left_site2 - start0,
+                                            end1 - right_site2 - site2_len)
+            if uncalled_n <= max_n_freq and frag_len > min_frag_len:
                 out_fasta.write(fa_fmt.format(name, seq_id, start0, end1,
                     seq[start0:(start0 + flank_len)],
                     seq[(end1 - flank_len):end1]))
                 out_info.write(info_fmt.format(name, seq_id, start0, end1,
                     "included"))
-            elif uncalled_n >= 1000:
+            elif uncalled_n > max_n_freq:
                 out_info.write(info_fmt.format(name, seq_id, start0, end1,
-                    "excluded[N=%d]" % uncalled_n))
+                    "excluded[N=%.2f]" % uncalled_n))
                 logging.debug("Fragment excluded due to Ns:      %s:%d-%d",
                         seq_id, start0, end1)
             else:
