@@ -160,7 +160,7 @@ def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info, site2):
             end1     = right_site #not including the RE site
             frag_len = end1 - start0
             frag_lengths.append(min(frag_len, 10000))
-            uncalled_n = float(seq.count("N", start = start0, end = end1)) / frag_len
+            uncalled_n = float(seq.count("N", start = start0, end = end1)) / max(frag_len, 1)
             if site2 == "":
                 site2_dist = "ND"
             else:
@@ -176,15 +176,15 @@ def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info, site2):
                     seq[start0:(start0 + flank_len)],
                     seq[(end1 - flank_len):end1]))
                 out_info.write(info_fmt.format(name, seq_id, start0, end1,
-                    "included"))
+                    "included", site2_dist))
             elif uncalled_n > max_n_freq:
                 out_info.write(info_fmt.format(name, seq_id, start0, end1,
-                    "excluded[N=%.2f]" % uncalled_n))
+                    "excluded[N=%.2f]" % uncalled_n, site2_dist))
                 logging.debug("Fragment excluded due to Ns:      %s:%d-%d",
                         seq_id, start0, end1)
             else:
                 out_info.write(info_fmt.format(name, seq_id, start0, end1,
-                    "excluded[L=%d]" % frag_len))
+                    "excluded[L=%d]" % frag_len, site2_dist))
                 logging.debug("Fragment excluded short length:      %s:%d-%d (%d)",
                         seq_id, start0, end1, frag_len)
 
