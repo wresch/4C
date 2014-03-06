@@ -138,7 +138,7 @@ def make_fasta_file(fasta, site, name, flank_len, out_fasta, out_info, site2):
     site_len  = len(site)
     site2     = site2.upper()
     site2_len = len(site2)
-    min_frag_len = flank_len + 2
+    min_frag_len = flank_len + 10
     frag_lengths = []
     max_n_freq = 0.2
     for rec in SeqIO.parse(fasta, "fasta"):
