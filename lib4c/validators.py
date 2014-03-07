@@ -79,10 +79,12 @@ def is_valid_outfile(fn, allow_existing=False):
             return False
                     
 def is_dir(dn, allow_existing=False):
+    """returns true if (1) it's a directory and allow_exisiting
+    is true or (2) it does not exists (i.e. can be created)"""
     if os.path.exists(dn) and os.path.isdir(dn):
         if allow_existing:
             return True
         else:
             return False
     else:
-        return False
+        return True
