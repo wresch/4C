@@ -46,8 +46,8 @@ import pysam
 BUFSIZE = 81920
 
 def check_args(args):
-    schema = {"<outdir>": (lambda x: not os.path.exists(x),
-                           "{<outdir>} already exists".format(**args)),
+    schema = {"<outdir>": (lambda x: val.is_dir(x, allow_existing=True),
+                           "{<outdir>} is not a valid target directory".format(**args)),
               "<bam>": (val.is_valid_bam_file_list,
                         "one or more of bam files were not found")}
     ok, errors = val.validate(args, schema)
@@ -68,8 +68,12 @@ def main(cmdline):
         sys.exit(1)
         
 def fragcount(outdir, bam_lst):
-    logging.info("output file: %s", outdir)
-    os.mkdir(outdir, 0700)
+    logging.info("output directory: %s", outdir)
+    if not os.path.exists(outdir):
+        logging.info("  creating...")
+        os.mkdir(outdir, 0700)
+    else:
+        logging.info("  already exists")
     count(bam_lst, outdir)
 
 def list2():
