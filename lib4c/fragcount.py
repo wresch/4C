@@ -127,7 +127,7 @@ class RunSummary(object):
         sorters.append(sorter)
         bed = "{0}\t{1}\t{2}\t{3}\n"
         for frag in all_frag_list:
-            enz, chrom, start0, end1 = frag.split("_")
+            enz, chrom, start0, end1 = frag.rsplit("_", 3)
             sorter.stdin.write(bed.format(chrom, start0, end1, enz))
         sorter.stdin.close()
         logging.info("waiting for sort processes to finish")
