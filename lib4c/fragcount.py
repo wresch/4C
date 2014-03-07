@@ -107,7 +107,7 @@ class RunSummary(object):
                     close_fds = True)
             total = self.valid_count[sample][1]
             for frag in counts:
-                _, chrom, start0, end1 = frag.split("_")
+                _, chrom, start0, end1 = frag.rsplit("_", 3)
                 left_n, right_n = counts[frag]
                 sorter.stdin.write(row.format(
                     chrom, start0, end1,
