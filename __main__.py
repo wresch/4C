@@ -29,7 +29,8 @@ Dependencies:
     Executables on path:
         - samtools
         - bowtie 1
-    
+
+Version: 0.1
 """
 
 from __future__ import print_function
