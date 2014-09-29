@@ -35,14 +35,14 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 BUFSIZE = 81920
 
 def check_args(args):
-    schema = Schema({"<read1>":  (val.is_valid_infile,
+    schema = {"<read1>":  (val.is_valid_infile,
                                   "{<read1>} not a valid file".format(**args)),
                      "<read2>":  (val.is_valid_infile,
                                   "{<read2>} not a valid file".format(**args)),
                      "<config>": (val.is_valid_infile,
                                   "{<config>} not a valid file".format(**args)),
                      "--out":    (lambda x: not os.path.exists(x),
-                                  "{--out} already exists".format(**args))})
+                                  "{--out} already exists".format(**args))}
     ok, errors = val.validate(args, schema)
     if not ok:
         for e in errors:
@@ -54,31 +54,31 @@ def check_args(args):
 def main(cmdline):
     args = docopt.docopt(__doc__, argv=cmdline)
     args = check_args(args)
-    if args is none:
+    if args is None:
         sys.exit(1)
     mkfq(args["<read1>"],
          args["<read2>"],
          args["<config>"],
          args["--out"])
 
-def mkfq(read1, read2, config, out):
+def mkfq(read1, read2, config, out_path):
     """driver function for the mkfq action"""
     logging.info("Read 1: %s", read1)
     logging.info("Read 2: %s", read2)
-    logging.info("Config: %s", config.name)
-    logging.info("Output goes to: %s", out)
+    logging.info("Config: %s", config)
+    logging.info("Output goes to: %s", out_path)
 
     with open(config) as config_fh:
         flanks, flank_prefix_len = parse_config_file(config_fh, min_prefix_len = 6)
-    os.mkdir(out)
+    os.mkdir(out_path)
 
     pairs       = make_pairs(read1, read2)
     valid_pairs = process_pairs(pairs, flanks, flank_prefix_len)
     out = {}
     for sample, rid, s1, q1, s2, q2 in valid_pairs:
         if sample not in out:
-            out[sample] = (open(os.path.join(out, "%s.r1.fq" % sample), "w"),
-                           open(os.path.join(out, "%s.r2.fq" % sample), "w"))
+            out[sample] = (open(os.path.join(out_path, "%s.r1.fq" % sample), "w"),
+                           open(os.path.join(out_path, "%s.r2.fq" % sample), "w"))
         out[sample][0].write("@{0}/1\n{1}\n+\n{2}\n".format(rid, s1, q1))
         out[sample][1].write("@{0}/2\n{1}\n+\n{2}\n".format(rid, s2, q2))
     for o in out:
