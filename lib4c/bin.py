@@ -24,6 +24,7 @@ from . import validators as val
 import os
 import logging
 import pybedtools as pbt
+import sys
 
 #TODO:  bad names for functions/variables - fix!
 
@@ -50,7 +51,6 @@ def main(cmdline):
     if args is None:
         sys.exit(1)
     print(args)
-    sys.exit(0)
     bin_frag(args["<outdir>"],
              args["<bins>"],
              args["<frags>"],
