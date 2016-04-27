@@ -5,14 +5,25 @@ Usage:
 Arguments:
     outdir      output directory
     bins        bins to use for binning in bed format
+                (4 column bed format - bed3 + id)
     frags       all fragments that were considered in
                 bed format (created by fragcount)
+                also 4 column bed format.
     fragcount   fragment count file(s) (also created by
-                fragcount
+                fragcount - 6 columns)
 
 Description:
-    Create bedgraph file for each fragcount output file showing the
-    fraction of positive frgments per fixed-size bin.
+    Create bed file for each fragcount output file with the following
+    columns:
+      - bin chrom 
+      - bin start 
+      - bin end 
+      - total number of restriction fragments overlapping bin
+      - sum of normalized 4C signal for bin
+      - number of detected restriction fragments
+      - fraction of detected restriction fragments (fracPos)
+
+    Normalization is just by total readnumber. 
 
     Currently user has to provide bins. 
 
@@ -86,37 +97,29 @@ def count_frags_per_bin(bins, frags):
     """does not include empty bins in output"""
     bins_with_frag = bins.intersect(frags, wao = True)\
             .filter(intersect_by_overlap)\
-            .groupby(grp = [1, 2, 3], opCols = [9], ops = ["count"])
+            .groupby(g = [1, 2, 3], c = [9], o = ["count"])
     return bins_with_frag
 
 def count_frags_per_bin_empty(bins, frags):
     """includes empty bins in output"""
-    def _filter(x):
-        o = int(x[10])
-        if o == 0:
-            return True
-        elif o > 0.51 * (int(x[6]) - int(x[5])):
-            return True
-        else:
-            x[10] = '0'
-            return True
     def _overlap_to_bool(x):
-        o = int(x[10])
-        if o > 0:
-            x[10] = '1'
+        if int(x[10]) > 0.51 * (int(x[6]) - int(x[5])):
+            # overlap is > 50%
+            x[10] = '1' # change overlap into 0/1
         else:
-            # fix normcount column for bins without positive frags
-            x[9] = '0'
+            x[10] = '0' # change overlap into 0/1
+            x[9]  = '0' # don't include fragcount in this interval
         return x
     def _frac_pos_bg(x):
         fracPos = float(x[5]) / float(x[3])
-        x.name = str(fracPos)
+        x.append(str(fracPos))
         return x
+    # the arguments for groupby use 1-based indexing into the columns
+    # very confusing
     bins_with_count = bins.intersect(frags, wao = True)\
-            .filter(_filter)\
             .each(_overlap_to_bool)\
-            .groupby(grp = [1, 2, 3, 4], opCols = [10,11], ops = ["sum", "sum"])\
-            .each(_frac_pos_bg).cut([0, 1, 2, 3])
+            .groupby(g = [1, 2, 3, 4], c = [10,11], o = ["sum", "sum"])\
+            .each(_frac_pos_bg)
     return bins_with_count
 
 
@@ -132,16 +135,9 @@ def make_bedgraph_files(samples, bins, outdir, color="166,86,40", smoothingWindo
     for sample in samples:
         # name based on file name
         name = os.path.basename(sample).split(".")[0]
-        outfile_name = os.path.join(outdir, name + ".bg")
+        outfile_name = os.path.join(outdir, name + ".bed")
         logging.info("Processing %s", name)
-        trackline = " ".join(
-            ["track type=bedGraph",
-             "name='%s' color=%s" % (name, color), 
-             "visibility=full alwaysZero=on",
-             "smoothingWindow=%d maxHeightPixels=60:80:120" % smoothingWindow])
 
         # just count the number of positive fragments per bin
-        count_frags_per_bin_empty(bins,
-                pbt.BedTool(sample)).saveas(outfile_name, trackline = trackline)
-        foo = count_frags_per_bin_empty(bins,
-                pbt.BedTool(sample))
+        count_frags_per_bin_empty(bins, pbt.BedTool(sample))\
+                .saveas(outfile_name)
